@@ -1,5 +1,11 @@
 import bpy
 import bgl
+import socket
+import time
+import subprocess
+
+SOCKET_HOST = "localhost"
+SOCKET_PORT = 8083
 
 
 class POCEngine(bpy.types.RenderEngine):
@@ -38,6 +44,37 @@ class POCEngine(bpy.types.RenderEngine):
         self.size_x = int(scene.render.resolution_x * scale)
 
         print("Engine Exe:", engine_exe)
+
+        # Setup socket and connect to engine executable
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((SOCKET_HOST, SOCKET_PORT))
+        s.listen(1)
+
+        print("Connecting to Engine")
+
+        # p = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        connection, address = s.accept()
+
+        trans_start = time.time()
+
+        data_buffer = []
+        while True:
+            in_data = connection.recv(1024)
+            if in_data:
+                data_buffer.append(in_data.decode("utf8"))
+            else:
+                break
+
+        data_to_string = ''.join(data_buffer).strip()
+        data_split = data_to_string.split(' ')
+        pix_data = [float(i) for i in data_split]
+
+        trans_end = time.time()
+        print("Transfer took:", (trans_end - trans_start))
+
+        connection.close()
+        s.close()
 
         # Fill the render result with a flat color. The framebuffer is
         # defined as a list of pixels, each pixel itself being a list of
