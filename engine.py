@@ -3,7 +3,7 @@ import bgl
 import socket
 import time
 import subprocess
-import select
+import json
 
 SOCKET_HOST = "localhost"
 SOCKET_PORT = 8083
@@ -78,33 +78,14 @@ class POCEngine(bpy.types.RenderEngine):
         data_to_string = ''.join(data_buffer).strip()
 
         parse_start = time.time()
-        pix_data = eval(data_to_string)
-        # for i in range(int(len(data_split) / 4)):
-        #     pixel = []
-        #     for j in range(4):
-        #         pixel.append(float(data_split[i * 4 + j]) / (10 ** float_precision))
-        #
-        #     pix_data.append(pixel)
-
+        pix_data = json.loads(data_to_string)
         parse_end = time.time()
 
         print("Transfer took:", (parse_end - parse_start))
 
-        # # Fill the render result with a flat color. The framebuffer is
-        # # defined as a list of pixels, each pixel itself being a list of
-        # # R,G,B,A values.
-        # if self.is_preview:
-        #     color = [0.1, 0.2, 0.1, 1.0]
-        # else:
-        #     color = [0.2, 1.0, 0.1, 1.0]
-        #
-        # pixel_count = self.size_x * self.size_y
-        # rect = [color] * pixel_count
-        #
-        # print("Sizes: {} vs {}. Base: {}".format(len(rect), len(pix_data), len(data_split)))
-
         # Here we write the pixel values to the RenderResult
         result = self.begin_result(0, 0, self.size_x, self.size_y)
+        # noinspection PyTypeChecker
         layer = result.layers[0].passes["Combined"]
         layer.rect = pix_data
         self.end_result(result)
