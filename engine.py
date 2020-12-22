@@ -3,6 +3,7 @@ import bgl
 import socket
 import time
 import subprocess
+import select
 
 SOCKET_HOST = "localhost"
 SOCKET_PORT = 8083
@@ -52,45 +53,60 @@ class POCEngine(bpy.types.RenderEngine):
 
         print("Connecting to Engine")
 
-        # p = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         connection, address = s.accept()
 
-        trans_start = time.time()
+        # SECTION: Send render data
+        scene_resolution = "{} {}".format(self.size_x, self.size_y)
+        connection.sendall(scene_resolution.encode("utf8"))
+        print("Sent resolution data")
 
+        # SECTION: Read in pixel data transfer and convert
         data_buffer = []
         while True:
             in_data = connection.recv(1024)
             if in_data:
                 data_buffer.append(in_data.decode("utf8"))
             else:
+                # Close off connection to engine once data is received
+                connection.close()
+                s.close()
                 break
 
+        print("Read render data")
         data_to_string = ''.join(data_buffer).strip()
-        data_split = data_to_string.split(' ')
-        pix_data = [float(i) for i in data_split]
 
-        trans_end = time.time()
-        print("Transfer took:", (trans_end - trans_start))
+        parse_start = time.time()
+        pix_data = eval(data_to_string)
+        # for i in range(int(len(data_split) / 4)):
+        #     pixel = []
+        #     for j in range(4):
+        #         pixel.append(float(data_split[i * 4 + j]) / (10 ** float_precision))
+        #
+        #     pix_data.append(pixel)
 
-        connection.close()
-        s.close()
+        parse_end = time.time()
 
-        # Fill the render result with a flat color. The framebuffer is
-        # defined as a list of pixels, each pixel itself being a list of
-        # R,G,B,A values.
-        if self.is_preview:
-            color = [0.1, 0.2, 0.1, 1.0]
-        else:
-            color = [0.2, 0.1, 0.1, 1.0]
+        print("Transfer took:", (parse_end - parse_start))
 
-        pixel_count = self.size_x * self.size_y
-        rect = [color] * pixel_count
+        # # Fill the render result with a flat color. The framebuffer is
+        # # defined as a list of pixels, each pixel itself being a list of
+        # # R,G,B,A values.
+        # if self.is_preview:
+        #     color = [0.1, 0.2, 0.1, 1.0]
+        # else:
+        #     color = [0.2, 1.0, 0.1, 1.0]
+        #
+        # pixel_count = self.size_x * self.size_y
+        # rect = [color] * pixel_count
+        #
+        # print("Sizes: {} vs {}. Base: {}".format(len(rect), len(pix_data), len(data_split)))
 
         # Here we write the pixel values to the RenderResult
         result = self.begin_result(0, 0, self.size_x, self.size_y)
         layer = result.layers[0].passes["Combined"]
-        layer.rect = rect
+        layer.rect = pix_data
         self.end_result(result)
 
     # For viewport renders, this method gets called once at the start and
