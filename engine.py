@@ -9,7 +9,7 @@ SOCKET_HOST = "localhost"
 SOCKET_PORT = 8083
 
 
-class POCEngine(bpy.types.RenderEngine):
+class ERPTEngine(bpy.types.RenderEngine):
     # SECTION: Engine basic properties:
     # Name properties
     bl_idname = "ERPTENGINE"
@@ -44,7 +44,44 @@ class POCEngine(bpy.types.RenderEngine):
         self.size_y = int(scene.render.resolution_y * scale)
         self.size_x = int(scene.render.resolution_x * scale)
 
-        print("Engine Exe:", engine_exe)
+        # SECTION: Collect render data
+        render_data = {}
+        scene_data = {"MESHES": [], "LIGHTS": [], "CAMERAS": []}
+
+        # Set Render Resolution
+        render_data["RESOLUTION"] = [self.size_x, self.size_y]
+
+        # Setting scene data
+        for obj in bpy.data.objects:
+            # Sort and interact by type
+            if obj.type == "MESH":
+                mesh_encode = {}
+
+                # Extract object parts
+                obj_eval = obj.evaluated_get(depsgraph)
+                obj_mesh = obj_eval.to_mesh()  # Mesh
+                obj_vertices = obj_mesh.vertices  # Vertices
+                obj_polys = obj_mesh.polygons  # Faces (polygons)
+
+                # Loop vertices
+                mesh_encode["VERTICES"] = [list(vertex.co) for vertex in obj_vertices]
+
+                # Loop faces
+                mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
+                                        obj_polys.values()]
+
+                # Add to scene_data and clear mesh
+                scene_data["MESHES"].append(mesh_encode)
+                obj_eval.to_mesh_clear()
+            elif obj.type == "LIGHT":
+                light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color), "ENERGY": obj.data.energy}
+                scene_data["LIGHTS"].append(light_encode)
+            elif obj.type == "CAMERA":
+                camera_encode = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler)}
+                scene_data["CAMERAS"].append(camera_encode)
+
+        # Load in scene data
+        render_data["SCENE"] = scene_data
 
         # Setup socket and connect to engine executable
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -53,14 +90,14 @@ class POCEngine(bpy.types.RenderEngine):
 
         print("Connecting to Engine")
 
-        p = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        _ = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         connection, address = s.accept()
 
         # SECTION: Send render data
-        scene_resolution = "{} {}".format(self.size_x, self.size_y)
-        connection.sendall(scene_resolution.encode("utf8"))
-        print("Sent resolution data")
+        render_data_json = json.dumps(render_data)
+        connection.sendall(render_data_json.encode("utf8"))
+        print("Sent all data")
 
         # SECTION: Read in pixel data transfer and convert
         data_buffer = []
@@ -243,20 +280,20 @@ def get_panels():
 
 def register():
     # Register the RenderEngine
-    bpy.utils.register_class(POCEngine)
+    bpy.utils.register_class(ERPTEngine)
 
     for panel in get_panels():
-        panel.COMPAT_ENGINES.add('POCENGINE')
+        panel.COMPAT_ENGINES.add('ERPTENGINE')
 
-    print("Engine Registered")
+    print("ERPT Engine Registered")
 
 
 def unregister():
-    bpy.utils.unregister_class(POCEngine)
+    bpy.utils.unregister_class(ERPTEngine)
 
     for panel in get_panels():
-        if 'POCENGINE' in panel.COMPAT_ENGINES:
-            panel.COMPAT_ENGINES.remove('POCENGINE')
+        if 'ERPTENGINE' in panel.COMPAT_ENGINES:
+            panel.COMPAT_ENGINES.remove('ERPTENGINE')
 
 
 if __name__ == "__main__":
