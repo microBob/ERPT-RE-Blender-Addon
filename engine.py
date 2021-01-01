@@ -1,8 +1,9 @@
 import bpy
 import bgl
 import socket
-import time
+from sys import getsizeof
 import subprocess
+import time
 import json
 
 SOCKET_HOST = "localhost"
@@ -74,7 +75,8 @@ class ERPTEngine(bpy.types.RenderEngine):
                 scene_data["MESHES"].append(mesh_encode)
                 obj_eval.to_mesh_clear()
             elif obj.type == "LIGHT":
-                light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color), "ENERGY": obj.data.energy}
+                light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color),
+                                "ENERGY": obj.data.energy}
                 scene_data["LIGHTS"].append(light_encode)
             elif obj.type == "CAMERA":
                 camera_encode = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler)}
@@ -95,8 +97,9 @@ class ERPTEngine(bpy.types.RenderEngine):
         connection, address = s.accept()
 
         # SECTION: Send render data
-        render_data_json = json.dumps(render_data)
-        connection.sendall(render_data_json.encode("utf8"))
+        render_data_json = json.dumps(render_data, separators=(',', ':')).encode()
+        render_data_len_rev = str(len(render_data_json))[::-1].encode()
+        connection.sendall(render_data_len_rev + render_data_json)  # Send data
         print("Sent all data")
 
         # SECTION: Read in pixel data transfer and convert
