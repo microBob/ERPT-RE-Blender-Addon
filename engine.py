@@ -47,7 +47,7 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         # SECTION: Collect render data
         render_data = {}
-        scene_data = {"MESHES": [], "LIGHTS": [], "CAMERAS": []}
+        scene_data = {"MESHES": [], "LIGHTS": []}
 
         # Set Render Resolution
         render_data["RESOLUTION"] = [self.size_x, self.size_y]
@@ -79,8 +79,11 @@ class ERPTEngine(bpy.types.RenderEngine):
                                 "ENERGY": obj.data.energy}
                 scene_data["LIGHTS"].append(light_encode)
             elif obj.type == "CAMERA":
-                camera_encode = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler)}
-                scene_data["CAMERAS"].append(camera_encode)
+                if obj == scene.camera:  # Only encode the active camera
+                    cam_mat = obj.matrix_world
+                    # noinspection PyUnresolvedReferences
+                    scene_data["CAMERA"] = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler),
+                                            "DIRECTION": [-cam_mat[0][2], -cam_mat[1][2], -cam_mat[2][2]]}
 
         # Load in scene data
         render_data["SCENE"] = scene_data
