@@ -80,10 +80,15 @@ class ERPTEngine(bpy.types.RenderEngine):
                 scene_data["LIGHTS"].append(light_encode)
             elif obj.type == "CAMERA":
                 if obj == scene.camera:  # Only encode the active camera
-                    cam_mat = obj.matrix_world
+                    camera_matrix = obj.matrix_world
+                    camera_data = obj.data
+                    camera_clip = [camera_data.clip_start, camera_data.clip_end]
+
                     # noinspection PyUnresolvedReferences
                     scene_data["CAMERA"] = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler),
-                                            "DIRECTION": [-cam_mat[0][2], -cam_mat[1][2], -cam_mat[2][2]]}
+                                            "DIRECTION": [-camera_matrix[0][2], -camera_matrix[1][2],
+                                                          -camera_matrix[2][2]], "FOV": camera_data.angle,
+                                            "CLIP": camera_clip}
 
         # Load in scene data
         render_data["SCENE"] = scene_data
@@ -95,7 +100,7 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         print("Connecting to Engine")
 
-        _ = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # _ = subprocess.Popen([engine_exe], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         connection, address = s.accept()
 
