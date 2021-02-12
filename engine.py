@@ -61,11 +61,12 @@ class ERPTEngine(bpy.types.RenderEngine):
                 # Extract object parts
                 obj_eval = obj.evaluated_get(depsgraph)
                 obj_mesh = obj_eval.to_mesh()  # Mesh
+                obj_mat = obj_eval.matrix_world
                 obj_vertices = obj_mesh.vertices  # Vertices
                 obj_polys = obj_mesh.polygons  # Faces (polygons)
 
                 # Loop vertices
-                mesh_encode["VERTICES"] = [list(vertex.co) for vertex in obj_vertices]
+                mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
 
                 # Loop faces
                 mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
@@ -124,6 +125,7 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         print("Read render data")
         data_to_string = ''.join(data_buffer).strip()
+        # print(data_to_string)
 
         parse_start = time.time()
         pix_data = json.loads(data_to_string)
