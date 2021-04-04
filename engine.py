@@ -3,6 +3,7 @@ import socket
 import time
 
 import bpy
+from mathutils import Vector
 
 SOCKET_HOST = "localhost"
 SOCKET_PORT = 8083
@@ -45,12 +46,13 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         # SECTION: Collect render data
         render_data = {}
-        scene_data = {"MESHES": [], "LIGHTS": []}
+        scene_data = {"MESHES": {"VERTICES": [], "INDICES": []}, "LIGHTS": []}
 
         # Set Render Resolution
         render_data["RESOLUTION"] = [self.size_x, self.size_y]
 
         # Setting scene data
+        mesh_indices_offset = 0
         for obj in bpy.data.objects:
             # Sort and interact by type
             if obj.type == "MESH":
@@ -63,15 +65,21 @@ class ERPTEngine(bpy.types.RenderEngine):
                 obj_vertices = obj_mesh.vertices  # Vertices
                 obj_polys = obj_mesh.polygons  # Faces (polygons)
 
-                # Loop vertices
-                mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
-
                 # Loop faces
-                mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
-                                        obj_polys.values()]
+                # mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
+                #                         obj_polys.values()]
+                for faces in obj_polys.values():
+                    scene_data["MESHES"]["INDICES"].append([index + mesh_indices_offset for index in faces.vertices])
+
+                # Loop vertices
+                # mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
+                for vertex in obj_vertices:
+                    scene_data["MESHES"]["VERTICES"].append(list(obj_mat @ vertex.co))
+
+                mesh_indices_offset += len(obj_vertices)  # Increase by number of vertices processed here
 
                 # Add to scene_data and clear mesh
-                scene_data["MESHES"].append(mesh_encode)
+                # scene_data["MESHES"].append(mesh_encode)
                 obj_eval.to_mesh_clear()
             elif obj.type == "LIGHT":
                 light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color),
@@ -82,11 +90,13 @@ class ERPTEngine(bpy.types.RenderEngine):
                     camera_matrix = obj.matrix_world
                     camera_data = obj.data
                     camera_clip = [camera_data.clip_start, camera_data.clip_end]
+                    camera_up = camera_matrix.to_quaternion() @ Vector((0.0, 1.0, 0.0))
+                    camera_direction = camera_matrix.to_quaternion() @ Vector((0.0, 0.0, -1.0))
 
                     # noinspection PyUnresolvedReferences
                     scene_data["CAMERA"] = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler),
-                                            "DIRECTION": [-camera_matrix[0][2], -camera_matrix[1][2],
-                                                          -camera_matrix[2][2]], "FOV": camera_data.angle,
+                                            "DIRECTION": list(camera_direction), "UP": list(camera_up),
+                                            "FOV": camera_data.angle,
                                             "CLIP": camera_clip}
 
         # Load in scene data
