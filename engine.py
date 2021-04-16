@@ -96,7 +96,7 @@ class ERPTEngine(bpy.types.RenderEngine):
                     # noinspection PyUnresolvedReferences
                     scene_data["CAMERA"] = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler),
                                             "DIRECTION": list(camera_direction), "UP": list(camera_up),
-                                            "FOV": camera_data.angle,
+                                            "FOV": camera_data.angle_y,
                                             "CLIP": camera_clip}
 
         # Load in scene data
