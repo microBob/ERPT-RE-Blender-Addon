@@ -1,10 +1,9 @@
-import bpy
-import bgl
-import socket
-from sys import getsizeof
-import subprocess
-import time
 import json
+import socket
+import time
+
+import bpy
+from mathutils import Vector
 
 SOCKET_HOST = "localhost"
 SOCKET_PORT = 8083
@@ -47,12 +46,13 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         # SECTION: Collect render data
         render_data = {}
-        scene_data = {"MESHES": [], "LIGHTS": []}
+        scene_data = {"MESHES": {"VERTICES": [], "INDICES": []}, "LIGHTS": []}
 
         # Set Render Resolution
         render_data["RESOLUTION"] = [self.size_x, self.size_y]
 
         # Setting scene data
+        mesh_indices_offset = 0
         for obj in bpy.data.objects:
             # Sort and interact by type
             if obj.type == "MESH":
@@ -65,15 +65,21 @@ class ERPTEngine(bpy.types.RenderEngine):
                 obj_vertices = obj_mesh.vertices  # Vertices
                 obj_polys = obj_mesh.polygons  # Faces (polygons)
 
-                # Loop vertices
-                mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
-
                 # Loop faces
-                mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
-                                        obj_polys.values()]
+                # mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
+                #                         obj_polys.values()]
+                for faces in obj_polys.values():
+                    scene_data["MESHES"]["INDICES"].append([index + mesh_indices_offset for index in faces.vertices])
+
+                # Loop vertices
+                # mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
+                for vertex in obj_vertices:
+                    scene_data["MESHES"]["VERTICES"].append(list(obj_mat @ vertex.co))
+
+                mesh_indices_offset += len(obj_vertices)  # Increase by number of vertices processed here
 
                 # Add to scene_data and clear mesh
-                scene_data["MESHES"].append(mesh_encode)
+                # scene_data["MESHES"].append(mesh_encode)
                 obj_eval.to_mesh_clear()
             elif obj.type == "LIGHT":
                 light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color),
@@ -84,11 +90,13 @@ class ERPTEngine(bpy.types.RenderEngine):
                     camera_matrix = obj.matrix_world
                     camera_data = obj.data
                     camera_clip = [camera_data.clip_start, camera_data.clip_end]
+                    camera_up = camera_matrix.to_quaternion() @ Vector((0.0, 1.0, 0.0))
+                    camera_direction = camera_matrix.to_quaternion() @ Vector((0.0, 0.0, -1.0))
 
                     # noinspection PyUnresolvedReferences
                     scene_data["CAMERA"] = {"LOCATION": list(obj.location), "ROTATION": list(obj.rotation_euler),
-                                            "DIRECTION": [-camera_matrix[0][2], -camera_matrix[1][2],
-                                                          -camera_matrix[2][2]], "FOV": camera_data.angle,
+                                            "DIRECTION": list(camera_direction), "UP": list(camera_up),
+                                            "FOV": camera_data.angle_y,
                                             "CLIP": camera_clip}
 
         # Load in scene data
@@ -139,137 +147,6 @@ class ERPTEngine(bpy.types.RenderEngine):
         layer = result.layers[0].passes["Combined"]
         layer.rect = pix_data
         self.end_result(result)
-
-    # For viewport renders, this method gets called once at the start and
-    # whenever the scene or 3D viewport changes. This method is where data
-    # should be read from Blender in the same thread. Typically a render
-    # thread will be started to do the work while keeping Blender responsive.
-    def view_update(self, context, depsgraph):
-        region = context.region
-        view3d = context.space_data
-        scene = depsgraph.scene
-
-        # Get viewport dimensions
-        dimensions = region.width, region.height
-
-        if not self.scene_data:
-            # First time initialization
-            self.scene_data = []
-            first_time = True
-
-            # Loop over all datablocks used in the scene.
-            for datablock in depsgraph.ids:
-                pass
-        else:
-            first_time = False
-
-            # Test which datablocks changed
-            for update in depsgraph.updates:
-                print("Datablock updated: ", update.id.name)
-
-            # Test if any material was added, removed or changed.
-            if depsgraph.id_type_updated('MATERIAL'):
-                print("Materials updated")
-
-        # Loop over all object instances in the scene.
-        if first_time or depsgraph.id_type_updated('OBJECT'):
-            for instance in depsgraph.object_instances:
-                pass
-
-    # For viewport renders, this method is called whenever Blender redraws
-    # the 3D viewport. The renderer is expected to quickly draw the render
-    # with OpenGL, and not perform other expensive work.
-    # Blender will draw overlays for selection and editing on top of the
-    # rendered image automatically.
-    def view_draw(self, context, depsgraph):
-        region = context.region
-        scene = depsgraph.scene
-
-        # Get viewport dimensions
-        dimensions = region.width, region.height
-
-        # Bind shader that converts from scene linear to display space,
-        bgl.glEnable(bgl.GL_BLEND)
-        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE_MINUS_SRC_ALPHA)
-        self.bind_display_space_shader(scene)
-
-        if not self.draw_data or self.draw_data.dimensions != dimensions:
-            self.draw_data = CustomDrawData(dimensions)
-
-        self.draw_data.draw()
-
-        self.unbind_display_space_shader()
-        bgl.glDisable(bgl.GL_BLEND)
-
-
-class CustomDrawData:
-    def __init__(self, dimensions):
-        # Generate dummy float image buffer
-        self.dimensions = dimensions
-        width, height = dimensions
-
-        pixels = [0.1, 0.2, 0.1, 1.0] * width * height
-        pixels = bgl.Buffer(bgl.GL_FLOAT, width * height * 4, pixels)
-
-        # Generate texture
-        self.texture = bgl.Buffer(bgl.GL_INT, 1)
-        bgl.glGenTextures(1, self.texture)
-        bgl.glActiveTexture(bgl.GL_TEXTURE0)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, self.texture[0])
-        bgl.glTexImage2D(bgl.GL_TEXTURE_2D, 0, bgl.GL_RGBA16F, width, height, 0, bgl.GL_RGBA, bgl.GL_FLOAT, pixels)
-        bgl.glTexParameteri(bgl.GL_TEXTURE_2D, bgl.GL_TEXTURE_MIN_FILTER, bgl.GL_LINEAR)
-        bgl.glTexParameteri(bgl.GL_TEXTURE_2D, bgl.GL_TEXTURE_MAG_FILTER, bgl.GL_LINEAR)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, 0)
-
-        # Bind shader that converts from scene linear to display space,
-        # use the scene's color management settings.
-        shader_program = bgl.Buffer(bgl.GL_INT, 1)
-        bgl.glGetIntegerv(bgl.GL_CURRENT_PROGRAM, shader_program)
-
-        # Generate vertex array
-        self.vertex_array = bgl.Buffer(bgl.GL_INT, 1)
-        bgl.glGenVertexArrays(1, self.vertex_array)
-        bgl.glBindVertexArray(self.vertex_array[0])
-
-        texturecoord_location = bgl.glGetAttribLocation(shader_program[0], "texCoord")
-        position_location = bgl.glGetAttribLocation(shader_program[0], "pos")
-
-        bgl.glEnableVertexAttribArray(texturecoord_location)
-        bgl.glEnableVertexAttribArray(position_location)
-
-        # Generate geometry buffers for drawing textured quad
-        position = [0.0, 0.0, width, 0.0, width, height, 0.0, height]
-        position = bgl.Buffer(bgl.GL_FLOAT, len(position), position)
-        texcoord = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]
-        texcoord = bgl.Buffer(bgl.GL_FLOAT, len(texcoord), texcoord)
-
-        self.vertex_buffer = bgl.Buffer(bgl.GL_INT, 2)
-
-        bgl.glGenBuffers(2, self.vertex_buffer)
-        bgl.glBindBuffer(bgl.GL_ARRAY_BUFFER, self.vertex_buffer[0])
-        bgl.glBufferData(bgl.GL_ARRAY_BUFFER, 32, position, bgl.GL_STATIC_DRAW)
-        bgl.glVertexAttribPointer(position_location, 2, bgl.GL_FLOAT, bgl.GL_FALSE, 0, None)
-
-        bgl.glBindBuffer(bgl.GL_ARRAY_BUFFER, self.vertex_buffer[1])
-        bgl.glBufferData(bgl.GL_ARRAY_BUFFER, 32, texcoord, bgl.GL_STATIC_DRAW)
-        bgl.glVertexAttribPointer(texturecoord_location, 2, bgl.GL_FLOAT, bgl.GL_FALSE, 0, None)
-
-        bgl.glBindBuffer(bgl.GL_ARRAY_BUFFER, 0)
-        bgl.glBindVertexArray(0)
-
-    def __del__(self):
-        bgl.glDeleteBuffers(2, self.vertex_buffer)
-        bgl.glDeleteVertexArrays(1, self.vertex_array)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, 0)
-        bgl.glDeleteTextures(1, self.texture)
-
-    def draw(self):
-        bgl.glActiveTexture(bgl.GL_TEXTURE0)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, self.texture[0])
-        bgl.glBindVertexArray(self.vertex_array[0])
-        bgl.glDrawArrays(bgl.GL_TRIANGLE_FAN, 0, 4)
-        bgl.glBindVertexArray(0)
-        bgl.glBindTexture(bgl.GL_TEXTURE_2D, 0)
 
 
 # RenderEngines also need to tell UI Panels that they are compatible with.
