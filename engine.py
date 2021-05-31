@@ -63,12 +63,17 @@ class ERPTEngine(bpy.types.RenderEngine):
                 obj_mat = obj_eval.matrix_world
                 obj_vertices = obj_mesh.vertices  # Vertices
                 obj_polys = obj_mesh.polygons  # Faces (polygons)
+                obj_materials = obj.data.materials
 
                 # Loop faces
                 mesh_encode["INDICES"] = [[index for index in faces.vertices] for faces in obj_polys.values()]
 
                 # Loop vertices
                 mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
+
+                # Add color
+                if len(obj_materials) > 0:
+                    mesh_encode["COLOR"] = list(obj_materials[0].diffuse_color)
 
                 # Add Kind; 0 = Mesh, 1 = Light
                 if "#LIGHT#" in obj.name:
