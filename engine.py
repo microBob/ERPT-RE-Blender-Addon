@@ -46,13 +46,12 @@ class ERPTEngine(bpy.types.RenderEngine):
 
         # SECTION: Collect render data
         render_data = {}
-        scene_data = {"MESHES": {"VERTICES": [], "INDICES": []}, "LIGHTS": []}
+        scene_data = {"MESHES": []}
 
         # Set Render Resolution
         render_data["RESOLUTION"] = [self.size_x, self.size_y]
 
         # Setting scene data
-        mesh_indices_offset = 0
         for obj in bpy.data.objects:
             # Sort and interact by type
             if obj.type == "MESH":
@@ -64,27 +63,27 @@ class ERPTEngine(bpy.types.RenderEngine):
                 obj_mat = obj_eval.matrix_world
                 obj_vertices = obj_mesh.vertices  # Vertices
                 obj_polys = obj_mesh.polygons  # Faces (polygons)
+                obj_materials = obj.data.materials
 
                 # Loop faces
-                # mesh_encode["FACES"] = [{"NORMAL": list(face.normal), "VERTICES": list(face.vertices)} for face in
-                #                         obj_polys.values()]
-                for faces in obj_polys.values():
-                    scene_data["MESHES"]["INDICES"].append([index + mesh_indices_offset for index in faces.vertices])
+                mesh_encode["INDICES"] = [[index for index in faces.vertices] for faces in obj_polys.values()]
 
                 # Loop vertices
-                # mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
-                for vertex in obj_vertices:
-                    scene_data["MESHES"]["VERTICES"].append(list(obj_mat @ vertex.co))
+                mesh_encode["VERTICES"] = [list(obj_mat @ vertex.co) for vertex in obj_vertices]
 
-                mesh_indices_offset += len(obj_vertices)  # Increase by number of vertices processed here
+                # Add color
+                if len(obj_materials) > 0:
+                    mesh_encode["COLOR"] = list(obj_materials[0].diffuse_color)
+
+                # Add Kind; 0 = Mesh, 1 = Light
+                if "#LIGHT#" in obj.name:
+                    mesh_encode["KIND"] = 1
+                else:
+                    mesh_encode["KIND"] = 0
 
                 # Add to scene_data and clear mesh
-                # scene_data["MESHES"].append(mesh_encode)
+                scene_data["MESHES"].append(mesh_encode)
                 obj_eval.to_mesh_clear()
-            elif obj.type == "LIGHT":
-                light_encode = {"TYPE": obj.data.type, "LOCATION": list(obj.location), "COLOR": list(obj.data.color),
-                                "ENERGY": obj.data.energy}
-                scene_data["LIGHTS"].append(light_encode)
             elif obj.type == "CAMERA":
                 if obj == scene.camera:  # Only encode the active camera
                     camera_matrix = obj.matrix_world
